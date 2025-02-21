@@ -7559,7 +7559,7 @@
   };
   var screenshoot = async (element) => {
     let screenshot = await (0, import_html2canvas.default)(element);
-    const screenshotDataUrl = screenshot.toDataURL("image/png");
+    const screenshotDataUrl = screenshot.toDataURL("image/base64");
     console.log("screenshotDataUrl", screenshotDataUrl);
     const downloadLink = document.createElement("a");
     downloadLink.href = screenshotDataUrl;
@@ -7570,15 +7570,39 @@
     console.log("screenshots taken");
     return screenshotDataUrl;
   };
+  var sanitizeChildren = (children) => {
+    return {
+      path: children.path,
+      tag: children.tag,
+      attributes: { ...children.attributes },
+      innerTextHash: children.innerTextHash,
+      getBoundingClientRect: { ...children.getBoundingClientRect },
+      isVisible: children.isVisible
+    };
+  };
   var isChildGroupableWithParent = async (parent, childIdx) => {
     const image = await screenshoot(parent.elementRef);
     parent.image = image;
-    return true;
+    const payload = {
+      obj1: sanitizeChildren(parent),
+      obj2: sanitizeChildren(parent.children[childIdx]),
+      img: image
+    };
+    console.log(payload);
+    const response = await fetch("http://127.0.0.1:5000/group", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    }).then((res) => res.json());
+    console.log(response);
+    return response?.received_data === "true";
   };
   var bottomUpGrouping = async (node, unionData) => {
     console.log("NODE", node);
     if (!node)
-      return;
+      return true;
     node.elementRef.style.border = "3px solid red";
     let allChildrenGroupable = true;
     for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
@@ -7587,28 +7611,40 @@
       if (await isChildGroupableWithParent(node, childIdx)) {
         console.log("Grouping", { node, childIdx });
         child.style.border = "unset";
+        unionData.set(node.children[childIdx].uuid, node.uuid);
         continue;
       }
+      child.style.border = "unset";
       allChildrenGroupable = false;
     }
     node.elementRef.style.border = "unset";
-    if (!allChildrenGroupable) {
-      console.log("Not all children groupable", node);
+    unionData.set(node.uuid, "parent");
+    return await bottomUpGrouping(node.parent, unionData);
+  };
+  var highlightGroupedElements = (children, unionData) => {
+    if (unionData.size === 1)
       return;
+    if (unionData.has(children.uuid)) {
+      children.elementRef.style.border = "3px solid blue";
     }
-    for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
-      unionData.set(node.children[childIdx].uuid, node.uuid);
+    for (const child of children.children) {
+      highlightGroupedElements(child, unionData);
     }
-    await bottomUpGrouping(node.parent, unionData);
   };
   document.addEventListener(
     "click",
     async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      event.stopImmediatePropagation();
       const crawledData = await generatedCrawledData(event);
       console.log(crawledData);
       const unionData = /* @__PURE__ */ new Map();
-      await bottomUpGrouping(crawledData.children[0], unionData);
+      const done = await bottomUpGrouping(crawledData.children[0], unionData);
       console.log(unionData);
+      if (done) {
+        highlightGroupedElements(crawledData.children[0], unionData);
+      }
     },
     true
   );

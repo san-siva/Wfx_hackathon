@@ -1,6 +1,6 @@
 console.log('Content script injected!');
 
-import html2canvas from "html2canvas";
+import html2canvas from 'html2canvas';
 import type { CrawledData, Children, Styles, Attributes } from './constants';
 import { defaultStyles } from './constants';
 
@@ -125,19 +125,29 @@ const generatedCrawledData = async (
 };
 
 const screenshoot = async (element: HTMLElement) => {
-  let screenshot = await html2canvas(element);
-  const screenshotDataUrl = screenshot.toDataURL("image/png");
-  console.log("screenshotDataUrl", screenshotDataUrl);
-  const downloadLink = document.createElement("a");
-  downloadLink.href = screenshotDataUrl;
-  downloadLink.download = "screenshot.png";
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
-  console.log("screenshots taken");
+	let screenshot = await html2canvas(element);
+	const screenshotDataUrl = screenshot.toDataURL('image/base64');
+	console.log('screenshotDataUrl', screenshotDataUrl);
+	const downloadLink = document.createElement('a');
+	downloadLink.href = screenshotDataUrl;
+	downloadLink.download = 'screenshot.png';
+	document.body.appendChild(downloadLink);
+	downloadLink.click();
+	document.body.removeChild(downloadLink);
+	console.log('screenshots taken');
 	return screenshotDataUrl;
 };
 
+const sanitizeChildren = (children: Children) => {
+	return {
+		path: children.path,
+		tag: children.tag,
+		attributes: { ...children.attributes },
+		innerTextHash: children.innerTextHash,
+		getBoundingClientRect: { ...children.getBoundingClientRect },
+		isVisible: children.isVisible,
+	};
+};
 
 const isChildGroupableWithParent = async (
 	parent: Children,
@@ -145,15 +155,30 @@ const isChildGroupableWithParent = async (
 ): Promise<boolean> => {
 	const image = await screenshoot(parent.elementRef);
 	parent.image = image;
-	return true;
+	// do an fetch post api call to http://127.0.0.1:5000
+	const payload = {
+		obj1: sanitizeChildren(parent),
+		obj2: sanitizeChildren(parent.children[childIdx]),
+		img: image,
+	};
+	console.log(payload);
+	const response = await fetch('http://127.0.0.1:5000/group', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify(payload),
+	}).then(res => res.json());
+	console.log(response);
+	return response?.received_data === 'true';
 };
 
 const bottomUpGrouping = async (
 	node: Children | null,
 	unionData: Map<string, string>
-) => {
+): Promise<boolean> => {
 	console.log('NODE', node);
-	if (!node) return;
+	if (!node) return true;
 	node.elementRef.style.border = '3px solid red';
 	let allChildrenGroupable = true;
 	for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
@@ -162,30 +187,52 @@ const bottomUpGrouping = async (
 		if (await isChildGroupableWithParent(node, childIdx)) {
 			console.log('Grouping', { node, childIdx });
 			child.style.border = 'unset';
+			unionData.set(node.children[childIdx].uuid, node.uuid);
 			continue;
 		}
+		child.style.border = 'unset';
 		allChildrenGroupable = false;
 	}
 	node.elementRef.style.border = 'unset';
-	if (!allChildrenGroupable) {
-		console.log('Not all children groupable', node);
-		return;
+	// if (!allChildrenGroupable) {
+	// 	console.log('Not all children groupable', node);
+	// 	return true;
+	// }
+	// for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
+	// 	unionData.set(node.children[childIdx].uuid, node.uuid);
+	// }
+	unionData.set(node.uuid, "parent");
+	return await bottomUpGrouping(node.parent, unionData);
+};
+
+const highlightGroupedElements = (
+	children: Children,
+	unionData: Map<string, string>
+) => {
+	if (unionData.size === 1) return;
+	if (unionData.has(children.uuid)) {
+		children.elementRef.style.border = '3px solid blue';
 	}
-	for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
-		unionData.set(node.children[childIdx].uuid, node.uuid);
+	for (const child of children.children) {
+		highlightGroupedElements(child, unionData);
 	}
-	await bottomUpGrouping(node.parent, unionData);
 };
 
 document.addEventListener(
 	'click',
 	async (event: MouseEvent) => {
+		event.stopPropagation();
+		event.preventDefault();
+		event.stopImmediatePropagation();
 		const crawledData = await generatedCrawledData(event);
 		console.log(crawledData);
 		// 													  node, group
 		const unionData = new Map<string, string>();
-		await bottomUpGrouping(crawledData.children[0], unionData);
+		const done = await bottomUpGrouping(crawledData.children[0], unionData);
 		console.log(unionData);
+		if (done) {
+			highlightGroupedElements(crawledData.children[0], unionData);
+		}
 	},
 	true
 );

@@ -5,6 +5,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from langchain.schema import HumanMessage
+from flask_cors import CORS
 import os
 import json
 
@@ -98,6 +99,7 @@ INPUT:
 """
 
 app = Flask(__name__)
+CORS(app)
 
 def get_smart_model():
     model = AzureChatOpenAI(
@@ -128,6 +130,7 @@ img: {encoded_image}
     )
 
     print("req send")
+    print(message)
     ai_msg = model.invoke([message])
     print("**********************************")
     print(ai_msg.content)
