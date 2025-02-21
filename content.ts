@@ -424,7 +424,6 @@ const getStyles = (element: HTMLElement): Styles => {
 		if (!isNaN(parseInt(property))) continue;
 		const match = property.match(/^webkit.*/);
 		if (match) continue;
-		console.log('match', match);
 		if (property in defaultStyles)
 			if (defaultStyles[property] === value) continue;
 		styles[property] = value;
@@ -477,7 +476,7 @@ const crawlElement = async (
 			? await generateHash(element.innerText)
 			: '',
 		getBoundingClientRect: element.getBoundingClientRect(),
-		isVisible: element.checkVisibility(),
+		isVisible: (element as any).checkVisibility(),
 		children: [],
 	};
 

@@ -5,9 +5,17 @@
     "moduleResolution": "Bundler",
     "target": "ESNext",
     "sourceMap": true,
-    "lib": ["es2020", "es2017", "dom"],
-    "outDir": "dist"
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
   },
-  "include": ["**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "build", "dist"]
 }
