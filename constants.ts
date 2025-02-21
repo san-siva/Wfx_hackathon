@@ -2,6 +2,8 @@ export type Attributes = Record<string, string | null>;
 export type Styles = Record<string, string>;
 
 export interface Children {
+	parent: Children | null;
+	elementRef: HTMLElement,
 	tag: string;
 	path: string;
 	uuid: string;

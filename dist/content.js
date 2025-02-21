@@ -28,10 +28,12 @@
     "PATH",
     "G"
   ]);
-  var crawlElement = async (element = document.querySelector("body"), traversal = "", siblingOrder = 0) => {
+  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0) => {
     const { tagName: tag } = element;
     const path = `${traversal}${tag}[${siblingOrder}]`;
     const elementData = {
+      parent,
+      elementRef: element,
       path,
       uuid: await generateHash(path),
       tag,
@@ -50,6 +52,7 @@
         await crawlElement(
           children[idx],
           `${elementData.path}/`,
+          elementData,
           idx
         )
       );
@@ -62,25 +65,57 @@
     const { tagName, parentElement } = element;
     return pathToParent(parentElement, `${tagName}${path ? "/" : ""}${path}`);
   };
+  var generatedCrawledData = async (event) => {
+    const crawledData = {
+      url: window.location.href,
+      meta: {
+        title: document.title,
+        description: document.querySelector('meta[name="description"]')?.getAttribute("content") || "",
+        keywords: document.querySelector('meta[name="keywords"]')?.getAttribute("content")?.split(",") || []
+      },
+      children: []
+    };
+    crawledData.children.push(
+      await crawlElement(
+        event.target,
+        pathToParent(event.target)
+      )
+    );
+    return crawledData;
+  };
+  var isChildGroupableWithParent = async (parent, childIdx) => {
+    console.log(parent, childIdx);
+    return true;
+  };
+  var bottomUpGrouping = async (node, unionData) => {
+    console.log("NODE", node);
+    if (!node)
+      return;
+    let allChildrenGroupable = true;
+    for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
+      if (await isChildGroupableWithParent(node, childIdx)) {
+        console.log("Grouping", { node, childIdx });
+        continue;
+      }
+      allChildrenGroupable = false;
+    }
+    if (!allChildrenGroupable) {
+      console.log("Not all children groupable", node);
+      return;
+    }
+    for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
+      unionData.set(node.children[childIdx].uuid, node.uuid);
+    }
+    await bottomUpGrouping(node.parent, unionData);
+  };
   document.addEventListener(
     "click",
     async (event) => {
-      const crawledData = {
-        url: window.location.href,
-        meta: {
-          title: document.title,
-          description: document.querySelector('meta[name="description"]')?.getAttribute("content") || "",
-          keywords: document.querySelector('meta[name="keywords"]')?.getAttribute("content")?.split(",") || []
-        },
-        children: []
-      };
-      crawledData.children.push(
-        await crawlElement(
-          event.target,
-          pathToParent(event.target)
-        )
-      );
+      const crawledData = await generatedCrawledData(event);
       console.log(crawledData);
+      const unionData = /* @__PURE__ */ new Map();
+      await bottomUpGrouping(crawledData.children[0], unionData);
+      console.log(unionData);
     },
     true
   );
