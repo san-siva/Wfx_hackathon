@@ -2,7 +2,7 @@
   "name": "my-extension",
   "version": "1.0.0",
   "scripts": {
-    "build": "esbuild content.ts --bundle --outfile=dist/content.js --format=esm"
+    "build": "esbuild content.ts --bundle --outfile=dist/content.js --format=iife"
   },
   "devDependencies": {
     "@types/puppeteer": "^7.0.4",
