@@ -14,6 +14,7 @@ interface Children {
 	path: string;
 	uuid: string;
 	attributes: Attributes;
+	image: string;
 	style: Styles;
 	innerTextHash: string;
 	getBoundingClientRect: {
@@ -466,12 +467,14 @@ const crawlElement = async (
 	siblingOrder = 0
 ): Promise<Children> => {
 	const { tagName: tag } = element;
+	const path = `${traversal}${tag}[${siblingOrder}]`;
 	const elementData: Children = {
-		path: `${traversal}${tag}[${siblingOrder}]`,
-		uuid: crypto.randomUUID(),
+		path,
+		uuid: await generateHash(path),
 		tag,
 		attributes: getAttributes(element),
 		style: getStyles(element),
+		image: '',
 		innerTextHash: element?.innerText
 			? await generateHash(element.innerText)
 			: '',
@@ -494,6 +497,15 @@ const crawlElement = async (
 	return elementData;
 };
 
+const pathToParent = (element: HTMLElement | null, path = ''): string => {
+	if (!element) return path;
+
+	const { tagName, parentElement } = element;
+	if (!tagName) return path;
+
+	return pathToParent(parentElement, `${tagName}${path ? '/' : ''}${path}`);
+};
+
 document.addEventListener(
 	'click',
 	async (event: MouseEvent) => {
@@ -513,7 +525,12 @@ document.addEventListener(
 			},
 			children: [],
 		};
-		crawledData.children.push(await crawlElement(event.target as HTMLElement));
+		crawledData.children.push(
+			await crawlElement(
+				event.target as HTMLElement,
+				pathToParent(event.target as HTMLElement)
+			)
+		);
 		console.log(crawledData);
 	},
 	true

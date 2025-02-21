@@ -385,7 +385,6 @@ const getStyles = (element) => {
         const match = property.match(/^webkit.*/);
         if (match)
             continue;
-        console.log('match', match);
         if (property in defaultStyles)
             if (defaultStyles[property] === value)
                 continue;
@@ -421,12 +420,14 @@ const DISABLED_ELEMENTS = new Set([
 ]);
 const crawlElement = async (element = document.querySelector('body'), traversal = '', siblingOrder = 0) => {
     const { tagName: tag } = element;
+    const path = `${traversal}${tag}[${siblingOrder}]`;
     const elementData = {
-        path: `${traversal}${tag}[${siblingOrder}]`,
-        uuid: crypto.randomUUID(),
+        path,
+        uuid: await generateHash(path),
         tag,
         attributes: getAttributes(element),
         style: getStyles(element),
+        image: '',
         innerTextHash: element?.innerText
             ? await generateHash(element.innerText)
             : '',
@@ -441,6 +442,14 @@ const crawlElement = async (element = document.querySelector('body'), traversal 
         elementData.children.push(await crawlElement(children[idx], `${elementData.path}/`, idx));
     }
     return elementData;
+};
+const pathToParent = (element, path = '') => {
+    if (!element)
+        return path;
+    const { tagName, parentElement } = element;
+    if (!tagName)
+        return path;
+    return pathToParent(parentElement, `${tagName}${path ? '/' : ''}${path}`);
 };
 document.addEventListener('click', async (event) => {
     const crawledData = {
@@ -457,7 +466,7 @@ document.addEventListener('click', async (event) => {
         },
         children: [],
     };
-    crawledData.children.push(await crawlElement(event.target));
+    crawledData.children.push(await crawlElement(event.target, pathToParent(event.target)));
     console.log(crawledData);
 }, true);
 //# sourceMappingURL=content.js.map
