@@ -17,26 +17,24 @@ prompt = """
 Two DOM objects are provided with the following attributes:
 
 path: The path to the DOM element from the root.
-tag: The tag of the DOM element.
-attributes: The attributes of the element, such as class and id.
-innerTextHash: A hash of the element's inner text (it’s empty if there is no inner text).
-getBoundingClientRect: The coordinates of the element relative to the viewport.
-isVisible: A flag indicating whether the element is visible.
-
-Context:
-path: Provides the location of the element within the DOM hierarchy.
 tag: The type of the HTML element (e.g., <div>, <button>, etc.).
 attributes: Defines various properties of the element, such as class, id, etc.
-innerTextHash: Represents the hash of the element's inner text content (useful for comparing text content).
+innerTextHash: Represents the hash of the element's inner text content. this is empty if the inner text is empty.
 getBoundingClientRect: Provides the position and size of the element in the viewport, such as its coordinates (x, y), width, height, etc.
 isVisible: Indicates whether the element is currently visible on the page.
+
+In addition to the DOM objects, we also have an image with both elements rendered and highlighted separately.
 
 Grouping Logic:
 Using the above attributes, group the two DOM objects based on the following criteria:
 
 Matching innerText: If the innerTextHash of both elements is the same, they should be grouped together.
+
 ClientBoundingRect Comparison: If the inner text of the elements is different or empty, compare the getBoundingClientRect values. The elements should be grouped together if their bounding rectangles are visually close enough, according to a threshold value.
+
 Attributes Comparison: Elements with similar attributes should be logically grouped together. For instance, buttons within the same panel should be grouped together, while a search icon should be grouped with the search bar.
+
+Finally use the image to infer the logical grouping of the elements. If the elements can be grouped logically based on the semantic and functional attributes, return true else return false.
 
 Output:
 The output should be a boolean indicating whether the two elements should be grouped or not.
@@ -90,6 +88,7 @@ obj2: {
     },
     "isVisible": true
   }
+img: "The image with both elements rendered and highlighted separately"
 
 SAMPLE OUTPUT - 1:
 true
@@ -111,14 +110,15 @@ def get_smart_model():
     )
     return model
 
-def call_ai(obj1, obj2, prompt):
+def call_ai(obj1, obj2, encoded_image, prompt):
     obj1_string = json.dumps(obj1)
     obj2_string = json.dumps(obj2)
 
     model = get_smart_model()
     prompt += f"""
 obj1: {obj1_string},
-obj2: {obj2_string}
+obj2: {obj2_string},
+img: {encoded_image}
 """
 
     message = HumanMessage(
@@ -147,8 +147,9 @@ def group_elements():
     data = request.get_json()
     obj1 = data['obj1']
     obj2 = data['obj2']
+    image = data['img']
 
-    return call_ai(obj1, obj2, prompt)
+    return call_ai(obj1, obj2, image, prompt)
 
 if __name__ == '__main__':
     app.run(debug=True)
