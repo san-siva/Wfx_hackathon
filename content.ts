@@ -1,5 +1,6 @@
 console.log('Content script injected!');
 
+import html2canvas from "html2canvas";
 import type { CrawledData, Children, Styles, Attributes } from './constants';
 import { defaultStyles } from './constants';
 
@@ -123,11 +124,27 @@ const generatedCrawledData = async (
 	return crawledData;
 };
 
+const screenshoot = async (element: HTMLElement) => {
+  let screenshot = await html2canvas(element);
+  const screenshotDataUrl = screenshot.toDataURL("image/png");
+  console.log("screenshotDataUrl", screenshotDataUrl);
+  const downloadLink = document.createElement("a");
+  downloadLink.href = screenshotDataUrl;
+  downloadLink.download = "screenshot.png";
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+  console.log("screenshots taken");
+	return screenshotDataUrl;
+};
+
+
 const isChildGroupableWithParent = async (
 	parent: Children,
 	childIdx: number
 ): Promise<boolean> => {
-	console.log(parent, childIdx);
+	const image = await screenshoot(parent.elementRef);
+	parent.image = image;
 	return true;
 };
 
@@ -137,14 +154,19 @@ const bottomUpGrouping = async (
 ) => {
 	console.log('NODE', node);
 	if (!node) return;
+	node.elementRef.style.border = '3px solid red';
 	let allChildrenGroupable = true;
 	for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
+		const child = node.children[childIdx].elementRef;
+		child.style.border = '2px solid green';
 		if (await isChildGroupableWithParent(node, childIdx)) {
 			console.log('Grouping', { node, childIdx });
+			child.style.border = 'unset';
 			continue;
 		}
 		allChildrenGroupable = false;
 	}
+	node.elementRef.style.border = 'unset';
 	if (!allChildrenGroupable) {
 		console.log('Not all children groupable', node);
 		return;
