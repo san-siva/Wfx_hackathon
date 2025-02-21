@@ -7,7 +7,7 @@ export interface Children {
 	uuid: string;
 	attributes: Attributes;
 	image: string;
-	style: Styles;
+	// style: Styles;
 	innerTextHash: string;
 	getBoundingClientRect: {
 		bottom: number;

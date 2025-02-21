@@ -61,7 +61,7 @@ const crawlElement = async (
 		uuid: await generateHash(path),
 		tag,
 		attributes: getAttributes(element),
-		style: getStyles(element),
+		// style: getStyles(element),
 		image: '',
 		innerTextHash: element?.innerText
 			? await generateHash(element.innerText)
