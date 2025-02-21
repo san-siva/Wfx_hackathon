@@ -12,6 +12,7 @@ interface Styles {
 interface Children {
 	tag: string;
 	path: string;
+	uuid: string;
 	attributes: Attributes;
 	style: Styles;
 	innerTextHash: string;
@@ -421,8 +422,9 @@ const getStyles = (element: HTMLElement): Styles => {
 	for (const [property, value] of Object.entries(computedStyles)) {
 		if (!value || value === 'auto') continue;
 		if (!isNaN(parseInt(property))) continue;
-		const match = property.match(/$webkit.*/);
-		console.log("match", match);
+		const match = property.match(/^webkit.*/);
+		if (match) continue;
+		console.log('match', match);
 		if (property in defaultStyles)
 			if (defaultStyles[property] === value) continue;
 		styles[property] = value;
@@ -449,6 +451,16 @@ const generateHash = async (message: string): Promise<string> => {
 	return hashHex;
 };
 
+const DISABLED_ELEMENTS = new Set([
+	'SCRIPT',
+	'NOSCRIPT',
+	'STYLE',
+	'LINK',
+	'META',
+	'HEAD',
+	'SVG',
+]);
+
 const crawlElement = async (
 	element: HTMLElement = document.querySelector('body')!,
 	traversal: string = '',
@@ -457,6 +469,7 @@ const crawlElement = async (
 	const { tagName: tag } = element;
 	const elementData: Children = {
 		path: `${traversal}${tag}[${siblingOrder}]`,
+		uuid: crypto.randomUUID(),
 		tag,
 		attributes: getAttributes(element),
 		style: getStyles(element),
@@ -470,6 +483,7 @@ const crawlElement = async (
 
 	const children = element.children;
 	for (let idx = 0; idx < children.length; idx++) {
+		if (DISABLED_ELEMENTS.has(children[idx].tagName)) continue;
 		elementData.children.push(
 			await crawlElement(
 				children[idx] as HTMLElement,

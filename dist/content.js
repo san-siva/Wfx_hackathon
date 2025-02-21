@@ -382,6 +382,10 @@ const getStyles = (element) => {
             continue;
         if (!isNaN(parseInt(property)))
             continue;
+        const match = property.match(/^webkit.*/);
+        if (match)
+            continue;
+        console.log('match', match);
         if (property in defaultStyles)
             if (defaultStyles[property] === value)
                 continue;
@@ -406,10 +410,20 @@ const generateHash = async (message) => {
         .join('');
     return hashHex;
 };
+const DISABLED_ELEMENTS = new Set([
+    'SCRIPT',
+    'NOSCRIPT',
+    'STYLE',
+    'LINK',
+    'META',
+    'HEAD',
+    'SVG',
+]);
 const crawlElement = async (element = document.querySelector('body'), traversal = '', siblingOrder = 0) => {
     const { tagName: tag } = element;
     const elementData = {
         path: `${traversal}${tag}[${siblingOrder}]`,
+        uuid: crypto.randomUUID(),
         tag,
         attributes: getAttributes(element),
         style: getStyles(element),
@@ -422,6 +436,8 @@ const crawlElement = async (element = document.querySelector('body'), traversal 
     };
     const children = element.children;
     for (let idx = 0; idx < children.length; idx++) {
+        if (DISABLED_ELEMENTS.has(children[idx].tagName))
+            continue;
         elementData.children.push(await crawlElement(children[idx], `${elementData.path}/`, idx));
     }
     return elementData;
