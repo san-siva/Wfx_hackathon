@@ -498,11 +498,9 @@ const crawlElement = async (
 };
 
 const pathToParent = (element: HTMLElement | null, path = ''): string => {
-	if (!element) return path;
+	if (!element || !element.tagName) return `${path}/`;
 
 	const { tagName, parentElement } = element;
-	if (!tagName) return path;
-
 	return pathToParent(parentElement, `${tagName}${path ? '/' : ''}${path}`);
 };
 

@@ -444,11 +444,9 @@ const crawlElement = async (element = document.querySelector('body'), traversal 
     return elementData;
 };
 const pathToParent = (element, path = '') => {
-    if (!element)
-        return path;
+    if (!element || !element.tagName)
+        return `${path}/`;
     const { tagName, parentElement } = element;
-    if (!tagName)
-        return path;
     return pathToParent(parentElement, `${tagName}${path ? '/' : ''}${path}`);
 };
 document.addEventListener('click', async (event) => {
