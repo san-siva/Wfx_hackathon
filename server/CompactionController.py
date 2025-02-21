@@ -92,9 +92,9 @@ obj2: {
   }
 
 SAMPLE OUTPUT - 1:
-true, reason: reason for returning true as output
+true
 
-Given the following input, provide a single word output (true or false) along with how you ended up with that conclusion
+Given the following input, provide a single word output (true or false)
 INPUT:
 """
 
