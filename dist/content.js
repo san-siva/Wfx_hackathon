@@ -7502,14 +7502,16 @@
     "PATH",
     "G"
   ]);
-  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0) => {
+  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0, mapOfElements = /* @__PURE__ */ new Map()) => {
     const { tagName: tag } = element;
     const path = `${traversal}${tag}[${siblingOrder}]`;
+    const uuid = await generateHash(path);
+    mapOfElements.set(uuid, element);
     const elementData = {
       parent,
       elementRef: element,
       path,
-      uuid: await generateHash(path),
+      uuid,
       tag,
       attributes: getAttributes(element),
       image: "",
@@ -7527,7 +7529,8 @@
           children[idx],
           `${elementData.path}/`,
           elementData,
-          idx
+          idx,
+          mapOfElements
         )
       );
     }
@@ -7539,7 +7542,7 @@
     const { tagName, parentElement } = element;
     return pathToParent(parentElement, `${tagName}${path ? "/" : ""}${path}`);
   };
-  var generatedCrawledData = async (event) => {
+  var generatedCrawledData = async (event, mapOfElements) => {
     const crawledData = {
       url: window.location.href,
       meta: {
@@ -7552,7 +7555,10 @@
     crawledData.children.push(
       await crawlElement(
         event.target,
-        pathToParent(event.target)
+        pathToParent(event.target),
+        null,
+        0,
+        mapOfElements
       )
     );
     return crawledData;
@@ -7621,29 +7627,41 @@
     unionData.set(node.uuid, "parent");
     return await bottomUpGrouping(node.parent, unionData);
   };
-  var highlightGroupedElements = (children, unionData) => {
-    if (unionData.size === 1)
-      return;
-    if (unionData.has(children.uuid)) {
-      children.elementRef.style.border = "3px solid blue";
-    }
-    for (const child of children.children) {
-      highlightGroupedElements(child, unionData);
-    }
-  };
+  function highlightUsingUnionData(unionData, mapOfElements) {
+    console.log(unionData, mapOfElements);
+    const colorMap = {};
+    const getColor = (key) => {
+      if (!colorMap[key]) {
+        colorMap[key] = `hsl(${Math.random() * 360}, 100%, 70%)`;
+      }
+      return colorMap[key];
+    };
+    Object.keys(unionData).forEach((key) => {
+      const color = getColor(key);
+      const elements = mapOfElements[key];
+      if (elements) {
+        elements.forEach((element) => {
+          if (element) {
+            element.style.border = `2px solid ${color}`;
+          }
+        });
+      }
+    });
+  }
   document.addEventListener(
     "click",
     async (event) => {
+      const mapOfElements = /* @__PURE__ */ new Map();
       event.stopPropagation();
       event.preventDefault();
       event.stopImmediatePropagation();
-      const crawledData = await generatedCrawledData(event);
+      const crawledData = await generatedCrawledData(event, mapOfElements);
       console.log(crawledData);
       const unionData = /* @__PURE__ */ new Map();
       const done = await bottomUpGrouping(crawledData.children[0], unionData);
       console.log(unionData);
       if (done) {
-        highlightGroupedElements(crawledData.children[0], unionData);
+        highlightUsingUnionData(unionData, mapOfElements);
       }
     },
     true

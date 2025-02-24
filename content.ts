@@ -54,15 +54,18 @@ const crawlElement = async (
 	element: HTMLElement = document.querySelector('body')!,
 	traversal: string = '',
 	parent: Children | null = null,
-	siblingOrder = 0
+	siblingOrder = 0,
+	mapOfElements: Map<string, HTMLElement> = new Map()
 ): Promise<Children> => {
 	const { tagName: tag } = element;
 	const path = `${traversal}${tag}[${siblingOrder}]`;
+	const uuid = await generateHash(path);
+	mapOfElements.set(uuid, element);
 	const elementData: Children = {
 		parent,
 		elementRef: element,
 		path,
-		uuid: await generateHash(path),
+		uuid,
 		tag,
 		attributes: getAttributes(element),
 		image: '',
@@ -82,7 +85,8 @@ const crawlElement = async (
 				children[idx] as HTMLElement,
 				`${elementData.path}/`,
 				elementData,
-				idx
+				idx,
+				mapOfElements
 			)
 		);
 	}
@@ -97,7 +101,8 @@ const pathToParent = (element: HTMLElement | null, path = ''): string => {
 };
 
 const generatedCrawledData = async (
-	event: MouseEvent
+	event: MouseEvent,
+	mapOfElements: Map<string, HTMLElement>
 ): Promise<CrawledData> => {
 	const crawledData: CrawledData = {
 		url: window.location.href,
@@ -118,7 +123,10 @@ const generatedCrawledData = async (
 	crawledData.children.push(
 		await crawlElement(
 			event.target as HTMLElement,
-			pathToParent(event.target as HTMLElement)
+			pathToParent(event.target as HTMLElement),
+			null,
+			0,
+			mapOfElements
 		)
 	);
 	return crawledData;
@@ -201,7 +209,7 @@ const bottomUpGrouping = async (
 	// for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
 	// 	unionData.set(node.children[childIdx].uuid, node.uuid);
 	// }
-	unionData.set(node.uuid, "parent");
+	unionData.set(node.uuid, 'parent');
 	return await bottomUpGrouping(node.parent, unionData);
 };
 
@@ -218,20 +226,52 @@ const highlightGroupedElements = (
 	}
 };
 
+function highlightUsingUnionData(
+	unionData: Map<string, string>,
+	mapOfElements: Map<string, HTMLElement>
+) {
+	console.log('maps', unionData, mapOfElements);
+
+	// Generate a consistent color for each key
+	const colorMap: Record<string, string> = {};
+	const getColor = (key: string) => {
+		if (!colorMap[key]) {
+			colorMap[key] = `hsl(${Math.random() * 360}, 100%, 70%)`; // Generate a unique color
+		}
+		return colorMap[key];
+	};
+
+	Object.keys(unionData).forEach(key => {
+		const color = getColor(key);
+
+		// Get elements associated with the key
+		const elements = mapOfElements[key];
+		if (elements) {
+			elements.forEach((element: HTMLElement) => {
+				if (element) {
+					element.style.border = `2px solid ${color}`;
+				}
+			});
+		}
+	});
+}
+
 document.addEventListener(
 	'click',
 	async (event: MouseEvent) => {
+		const mapOfElements = new Map<string, HTMLElement>();
 		event.stopPropagation();
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		const crawledData = await generatedCrawledData(event);
+		const crawledData = await generatedCrawledData(event, mapOfElements);
 		console.log(crawledData);
 		// 													  node, group
 		const unionData = new Map<string, string>();
 		const done = await bottomUpGrouping(crawledData.children[0], unionData);
 		console.log(unionData);
 		if (done) {
-			highlightGroupedElements(crawledData.children[0], unionData);
+			// highlightGroupedElements(crawledData.children[0], unionData);
+			highlightUsingUnionData(unionData, mapOfElements);
 		}
 	},
 	true
