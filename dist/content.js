@@ -7502,19 +7502,24 @@
     "PATH",
     "G"
   ]);
-  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0) => {
+  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0, unionData2, mapOfElements2) => {
+    console.log("bounding rect", element.getBoundingClientRect());
     const { tagName: tag } = element;
+    const boundingRect = element.getBoundingClientRect();
     const path = `${traversal}${tag}[${siblingOrder}]`;
+    const pathHash = await generateHash(path);
+    unionData2.set(pathHash, pathHash);
+    mapOfElements2.set(pathHash, element);
     const elementData = {
       parent,
       elementRef: element,
       path,
-      uuid: await generateHash(path),
+      uuid: pathHash,
       tag,
       attributes: getAttributes(element),
       image: "",
       innerTextHash: element?.innerText ? await generateHash(element.innerText) : "",
-      getBoundingClientRect: element.getBoundingClientRect(),
+      getBoundingClientRect: boundingRect,
       isVisible: element.checkVisibility(),
       children: []
     };
@@ -7527,7 +7532,9 @@
           children[idx],
           `${elementData.path}/`,
           elementData,
-          idx
+          idx,
+          unionData2,
+          mapOfElements2
         )
       );
     }
@@ -7539,7 +7546,7 @@
     const { tagName, parentElement } = element;
     return pathToParent(parentElement, `${tagName}${path ? "/" : ""}${path}`);
   };
-  var generatedCrawledData = async (event) => {
+  var generatedCrawledData = async (event, unionData2, mapOfElements2) => {
     const crawledData = {
       url: window.location.href,
       meta: {
@@ -7552,7 +7559,11 @@
     crawledData.children.push(
       await crawlElement(
         event.target,
-        pathToParent(event.target)
+        pathToParent(event.target),
+        null,
+        0,
+        unionData2,
+        mapOfElements2
       )
     );
     return crawledData;
@@ -7571,24 +7582,27 @@
     return screenshotDataUrl;
   };
   var sanitizeChildren = (children) => {
+    const boundingRect = children.getBoundingClientRect;
     return {
       path: children.path,
       tag: children.tag,
       attributes: { ...children.attributes },
       innerTextHash: children.innerTextHash,
-      getBoundingClientRect: { ...children.getBoundingClientRect },
+      getBoundingClientRect: boundingRect,
       isVisible: children.isVisible
     };
   };
   var isChildGroupableWithParent = async (parent, childIdx) => {
     const image = await screenshoot(parent.elementRef);
+    const obj1 = sanitizeChildren(parent);
+    console.log("obj1", obj1);
     parent.image = image;
     const payload = {
-      obj1: sanitizeChildren(parent),
+      obj1,
       obj2: sanitizeChildren(parent.children[childIdx]),
       img: image
     };
-    console.log(payload);
+    console.log("payload", payload);
     const response = await fetch("http://127.0.0.1:5000/group", {
       method: "POST",
       headers: {
@@ -7599,7 +7613,7 @@
     console.log(response);
     return response?.received_data === "true";
   };
-  var bottomUpGrouping = async (node, unionData) => {
+  var bottomUpGrouping = async (node, unionData2) => {
     console.log("NODE", node);
     if (!node)
       return true;
@@ -7611,39 +7625,44 @@
       if (await isChildGroupableWithParent(node, childIdx)) {
         console.log("Grouping", { node, childIdx });
         child.style.border = "unset";
-        unionData.set(node.children[childIdx].uuid, node.uuid);
+        unionData2.set(node.children[childIdx].uuid, node.uuid);
         continue;
       }
       child.style.border = "unset";
       allChildrenGroupable = false;
     }
     node.elementRef.style.border = "unset";
-    unionData.set(node.uuid, "parent");
-    return await bottomUpGrouping(node.parent, unionData);
+    return await bottomUpGrouping(node.parent, unionData2);
   };
-  var highlightGroupedElements = (children, unionData) => {
-    if (unionData.size === 1)
-      return;
-    if (unionData.has(children.uuid)) {
-      children.elementRef.style.border = "3px solid blue";
+  function getValueMapFromUnionData(inputMap) {
+    const result = {};
+    for (const [key, value] of Object.entries(inputMap)) {
+      if (!result[value]) {
+        result[value] = [];
+      }
+      result[value].push(key);
     }
-    for (const child of children.children) {
-      highlightGroupedElements(child, unionData);
-    }
+    return result;
+  }
+  var highlightGroupedElements = (unionData2, mapOfElements2) => {
+    const value_map = getValueMapFromUnionData(unionData2);
+    console.log(value_map);
   };
+  var unionData = /* @__PURE__ */ new Map();
+  var mapOfElements = /* @__PURE__ */ new Map();
   document.addEventListener(
     "click",
     async (event) => {
       event.stopPropagation();
       event.preventDefault();
       event.stopImmediatePropagation();
-      const crawledData = await generatedCrawledData(event);
+      const crawledData = await generatedCrawledData(event, unionData, mapOfElements);
       console.log(crawledData);
-      const unionData = /* @__PURE__ */ new Map();
+      console.log("union crawl", unionData);
       const done = await bottomUpGrouping(crawledData.children[0], unionData);
-      console.log(unionData);
       if (done) {
-        highlightGroupedElements(crawledData.children[0], unionData);
+        console.log("union data", unionData, mapOfElements);
+        highlightGroupedElements(unionData, mapOfElements);
       }
     },
     true

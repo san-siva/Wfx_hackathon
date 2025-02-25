@@ -54,22 +54,29 @@ const crawlElement = async (
 	element: HTMLElement = document.querySelector('body')!,
 	traversal: string = '',
 	parent: Children | null = null,
-	siblingOrder = 0
+	siblingOrder = 0,
+	unionData: Map<string, string>,
+	mapOfElements: Map<string, HTMLElement>
 ): Promise<Children> => {
+    console.log("bounding rect", element.getBoundingClientRect())
 	const { tagName: tag } = element;
+	const boundingRect = element.getBoundingClientRect()
 	const path = `${traversal}${tag}[${siblingOrder}]`;
+	const pathHash = await generateHash(path);
+	unionData.set(pathHash, pathHash);
+	mapOfElements.set(pathHash, element)
 	const elementData: Children = {
 		parent,
 		elementRef: element,
 		path,
-		uuid: await generateHash(path),
+		uuid: pathHash,
 		tag,
 		attributes: getAttributes(element),
 		image: '',
 		innerTextHash: element?.innerText
 			? await generateHash(element.innerText)
 			: '',
-		getBoundingClientRect: element.getBoundingClientRect(),
+		getBoundingClientRect: boundingRect,
 		isVisible: (element as any).checkVisibility(),
 		children: [],
 	};
@@ -82,7 +89,9 @@ const crawlElement = async (
 				children[idx] as HTMLElement,
 				`${elementData.path}/`,
 				elementData,
-				idx
+				idx,
+				unionData,
+				mapOfElements
 			)
 		);
 	}
@@ -97,7 +106,9 @@ const pathToParent = (element: HTMLElement | null, path = ''): string => {
 };
 
 const generatedCrawledData = async (
-	event: MouseEvent
+	event: MouseEvent,
+	unionData: Map<string, string>,
+	mapOfElements: Map<string, HTMLElement>
 ): Promise<CrawledData> => {
 	const crawledData: CrawledData = {
 		url: window.location.href,
@@ -118,7 +129,11 @@ const generatedCrawledData = async (
 	crawledData.children.push(
 		await crawlElement(
 			event.target as HTMLElement,
-			pathToParent(event.target as HTMLElement)
+			pathToParent(event.target as HTMLElement),
+			null,
+			0,
+			unionData,
+			mapOfElements
 		)
 	);
 	return crawledData;
@@ -139,12 +154,13 @@ const screenshoot = async (element: HTMLElement) => {
 };
 
 const sanitizeChildren = (children: Children) => {
+    const boundingRect = children.getBoundingClientRect
 	return {
 		path: children.path,
 		tag: children.tag,
 		attributes: { ...children.attributes },
 		innerTextHash: children.innerTextHash,
-		getBoundingClientRect: { ...children.getBoundingClientRect },
+		getBoundingClientRect: boundingRect,
 		isVisible: children.isVisible,
 	};
 };
@@ -154,14 +170,16 @@ const isChildGroupableWithParent = async (
 	childIdx: number
 ): Promise<boolean> => {
 	const image = await screenshoot(parent.elementRef);
+	const obj1 = sanitizeChildren(parent)
+	console.log("obj1", obj1);
 	parent.image = image;
 	// do an fetch post api call to http://127.0.0.1:5000
 	const payload = {
-		obj1: sanitizeChildren(parent),
+		obj1,
 		obj2: sanitizeChildren(parent.children[childIdx]),
 		img: image,
 	};
-	console.log(payload);
+	console.log("payload", payload);
 	const response = await fetch('http://127.0.0.1:5000/group', {
 		method: 'POST',
 		headers: {
@@ -201,37 +219,42 @@ const bottomUpGrouping = async (
 	// for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
 	// 	unionData.set(node.children[childIdx].uuid, node.uuid);
 	// }
-	unionData.set(node.uuid, "parent");
 	return await bottomUpGrouping(node.parent, unionData);
 };
 
+function getValueMapFromUnionData(inputMap) {
+    const result = {};
+
+    // Iterate over the map entries
+
+    return result;
+}
+
 const highlightGroupedElements = (
-	children: Children,
-	unionData: Map<string, string>
+	unionData: Map<string, String>,
+	mapOfElements: Map<string, HTMLElement>
 ) => {
-	if (unionData.size === 1) return;
-	if (unionData.has(children.uuid)) {
-		children.elementRef.style.border = '3px solid blue';
-	}
-	for (const child of children.children) {
-		highlightGroupedElements(child, unionData);
-	}
+	const value_map = getValueMapFromUnionData(unionData)
+    console.log(value_map);
 };
 
+const unionData = new Map<string, string>();
+const mapOfElements = new Map<string, HTMLElement>();
 document.addEventListener(
 	'click',
 	async (event: MouseEvent) => {
 		event.stopPropagation();
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		const crawledData = await generatedCrawledData(event);
+		const crawledData = await generatedCrawledData(event, unionData, mapOfElements);
 		console.log(crawledData);
-		// 													  node, group
-		const unionData = new Map<string, string>();
+        console.log("union crawl", unionData);
+
 		const done = await bottomUpGrouping(crawledData.children[0], unionData);
-		console.log(unionData);
+
 		if (done) {
-			highlightGroupedElements(crawledData.children[0], unionData);
+            console.log("union data", unionData, mapOfElements);
+			highlightGroupedElements(unionData, mapOfElements);
 		}
 	},
 	true
