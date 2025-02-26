@@ -7473,24 +7473,8 @@
     }
   });
 
-  // content.ts
+  // constants.ts
   var import_html2canvas = __toESM(require_html2canvas());
-  console.log("Content script injected!");
-  var getAttributes = (element) => {
-    const attributes = {};
-    for (const attribute of element.getAttributeNames()) {
-      attributes[attribute] = element.getAttribute(attribute);
-    }
-    return attributes;
-  };
-  var generateHash = async (message) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    return hashHex;
-  };
   var DISABLED_ELEMENTS = /* @__PURE__ */ new Set([
     "SCRIPT",
     "NOSCRIPT",
@@ -7498,55 +7482,106 @@
     "LINK",
     "META",
     "HEAD",
-    "SVG",
-    "PATH",
-    "G"
+    "SVG"
   ]);
-  var crawlElement = async (element = document.querySelector("body"), traversal = "", parent = null, siblingOrder = 0, unionData2, mapOfElements2) => {
-    console.log("bounding rect", element.getBoundingClientRect());
+  var CLICKABLE_ELEMENTS = /* @__PURE__ */ new Set([
+    "A",
+    "BUTTON",
+    "INPUT",
+    "SELECT",
+    "TEXTAREA"
+  ]);
+  var generateHash = async (message) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  };
+  var highlight = (parent, child, isAiMode = false) => {
+    const childElement = document.querySelector(
+      `[data-uuid="${child}"]`
+    );
+    const parentElement = document.querySelector(
+      `[data-uuid="${parent}"]`
+    );
+    if (!childElement || !parentElement)
+      return;
+    parentElement.style.border = `2px solid ${isAiMode ? "red" : "purple"}`;
+    childElement.style.border = `1px solid ${isAiMode ? "orange" : "blue"}`;
+  };
+  var highlightGroupedElements = (unionData, isAiMode = false) => {
+    unionData.forEach((parent, child) => highlight(parent, child, isAiMode));
+  };
+  var pathToParent = (element, path = []) => {
+    if (!element || !element.tagName)
+      return path.reverse();
+    path.push(element.tagName);
+    return pathToParent(element.parentElement, path);
+  };
+  var compareBoundingClientRects = (rect1, rect2, threshold = 10) => {
+    const diff = (a, b) => Math.abs(a - b);
+    return ["x", "y", "width", "height"].every(
+      (prop) => diff(rect1[prop], rect2[prop]) < threshold
+    );
+  };
+  var compareInnerText = (parent, child) => parent.innerText === child.innerText;
+  var isAncestorClickable = (path) => path.some((element) => CLICKABLE_ELEMENTS.has(element.toUpperCase()));
+  var screenshot = async (element, parent, child) => {
+    const parentOldBorder = parent.elementRef.style.border;
+    const childOldBorder = child.elementRef.style.border;
+    parent.elementRef.style.border = "2px solid red";
+    child.elementRef.style.border = "2px solid red";
+    const screenshot2 = await (0, import_html2canvas.default)(element);
+    parent.elementRef.style.border = parentOldBorder;
+    child.elementRef.style.border = childOldBorder;
+    const screenshotDataUrl = screenshot2.toDataURL("image/base64");
+    parent.image = screenshotDataUrl;
+    return screenshotDataUrl;
+  };
+
+  // content.ts
+  console.log("Content script injected!");
+  var ancestorGrouping = /* @__PURE__ */ new Map();
+  var clientBoundingRectGrouping = /* @__PURE__ */ new Map();
+  var innerTextGrouping = /* @__PURE__ */ new Map();
+  var aiGrouping = /* @__PURE__ */ new Map();
+  var crawlElement = async (element = document.body, path = [], parent = null, siblingOrder = 0) => {
+    totalNoOfNodes += 1;
     const { tagName: tag } = element;
     const boundingRect = element.getBoundingClientRect();
-    const path = `${traversal}${tag}[${siblingOrder}]`;
-    const pathHash = await generateHash(path);
-    unionData2.set(pathHash, pathHash);
-    mapOfElements2.set(pathHash, element);
+    path.push(`${tag}[${siblingOrder}]`);
+    const pathHash = await generateHash(path.join(""));
+    element.setAttribute("data-uuid", pathHash);
     const elementData = {
       parent,
       elementRef: element,
       path,
       uuid: pathHash,
       tag,
-      attributes: getAttributes(element),
       image: "",
-      innerTextHash: element?.innerText ? await generateHash(element.innerText) : "",
+      innerTextHash: element.innerText ? await generateHash(element.innerText) : "",
       getBoundingClientRect: boundingRect,
       isVisible: element.checkVisibility(),
       children: []
     };
-    const children = element.children;
-    for (let idx = 0; idx < children.length; idx++) {
-      if (DISABLED_ELEMENTS.has(children[idx].tagName.toUpperCase()))
+    for (let idx = 0; idx < element.children.length; idx++) {
+      const child = element.children[idx];
+      if (DISABLED_ELEMENTS.has(child.tagName.toUpperCase()))
         continue;
       elementData.children.push(
         await crawlElement(
-          children[idx],
-          `${elementData.path}/`,
+          child,
+          [...elementData.path],
           elementData,
-          idx,
-          unionData2,
-          mapOfElements2
+          idx
         )
       );
     }
     return elementData;
   };
-  var pathToParent = (element, path = "") => {
-    if (!element || !element.tagName)
-      return `${path}/`;
-    const { tagName, parentElement } = element;
-    return pathToParent(parentElement, `${tagName}${path ? "/" : ""}${path}`);
-  };
-  var generatedCrawledData = async (event, unionData2, mapOfElements2) => {
+  var totalNoOfNodes = 0;
+  var generateCrawledData = async () => {
     const crawledData = {
       url: window.location.href,
       meta: {
@@ -7557,112 +7592,93 @@
       children: []
     };
     crawledData.children.push(
-      await crawlElement(
-        event.target,
-        pathToParent(event.target),
-        null,
-        0,
-        unionData2,
-        mapOfElements2
-      )
+      await crawlElement(document.body, pathToParent(document.body), null, 0)
     );
     return crawledData;
   };
-  var screenshoot = async (element) => {
-    let screenshot = await (0, import_html2canvas.default)(element);
-    const screenshotDataUrl = screenshot.toDataURL("image/base64");
-    console.log("screenshotDataUrl", screenshotDataUrl);
-    const downloadLink = document.createElement("a");
-    downloadLink.href = screenshotDataUrl;
-    downloadLink.download = "screenshot.png";
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    console.log("screenshots taken");
-    return screenshotDataUrl;
-  };
-  var sanitizeChildren = (children) => {
-    const boundingRect = children.getBoundingClientRect;
-    return {
-      path: children.path,
-      tag: children.tag,
-      attributes: { ...children.attributes },
-      innerTextHash: children.innerTextHash,
-      getBoundingClientRect: boundingRect,
-      isVisible: children.isVisible
-    };
-  };
-  var isChildGroupableWithParent = async (parent, childIdx) => {
-    const image = await screenshoot(parent.elementRef);
-    const obj1 = sanitizeChildren(parent);
-    console.log("obj1", obj1);
-    parent.image = image;
-    const payload = {
-      obj1,
-      obj2: sanitizeChildren(parent.children[childIdx]),
-      img: image
-    };
-    console.log("payload", payload);
+  var tryGrouping = async (parent, child) => {
+    if (!parent || !child)
+      return;
+    if (isAncestorClickable(child.path)) {
+      ancestorGrouping.set(child.uuid, parent.uuid);
+      return;
+    }
+    if (compareBoundingClientRects(
+      parent.getBoundingClientRect,
+      child.getBoundingClientRect
+    )) {
+      clientBoundingRectGrouping.set(child.uuid, parent.uuid);
+      return;
+    }
+    if (compareInnerText(parent.elementRef, child.elementRef)) {
+      innerTextGrouping.set(child.uuid, parent.uuid);
+      return;
+    }
     const response = await fetch("http://127.0.0.1:5000/group", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        img: await screenshot(parent.elementRef, parent, child)
+      })
     }).then((res) => res.json());
-    console.log(response);
-    return response?.received_data === "true";
+    if (`${response?.received_data}`.toLowerCase() === "true") {
+      aiGrouping.set(child.uuid, parent.uuid);
+      console.log("AI Grouping", child.elementRef, parent.elementRef);
+      return;
+    }
+    return;
   };
-  var bottomUpGrouping = async (node, unionData2) => {
-    console.log("NODE", node);
+  var groupingResults = [
+    { name: "Ancestor", grouping: ancestorGrouping, highlight: false },
+    {
+      name: "ClientBoundingRect",
+      grouping: clientBoundingRectGrouping,
+      highlight: false
+    },
+    { name: "InnerText", grouping: innerTextGrouping, highlight: false },
+    { name: "AI", grouping: aiGrouping, highlight: false }
+  ];
+  var calculatePercentage = (count, total) => (count / total * 100).toFixed(2);
+  var logGroupingResults = (results, totalNodes) => {
+    const totalGrouped = results.reduce(
+      (sum, result) => sum + result.grouping.size,
+      0
+    );
+    const unableToGroup = totalNodes - totalGrouped;
+    results.forEach((result) => {
+      console.log(
+        `Grouped by ${result.name}: ${calculatePercentage(result.grouping.size, totalNodes)}%`
+      );
+    });
+    console.log(
+      `Unable to group: ${calculatePercentage(unableToGroup, totalNodes)}%`
+    );
+  };
+  var bottomUpGrouping = async (node) => {
     if (!node)
       return true;
-    node.elementRef.style.border = "3px solid red";
-    let allChildrenGroupable = true;
-    for (let childIdx = 0; childIdx < node.children.length; childIdx++) {
-      const child = node.children[childIdx].elementRef;
-      child.style.border = "2px solid green";
-      if (await isChildGroupableWithParent(node, childIdx)) {
-        console.log("Grouping", { node, childIdx });
-        child.style.border = "unset";
-        unionData2.set(node.children[childIdx].uuid, node.uuid);
-        continue;
-      }
-      child.style.border = "unset";
-      allChildrenGroupable = false;
+    for (const child of node.children) {
+      await bottomUpGrouping(child);
     }
-    node.elementRef.style.border = "unset";
-    return await bottomUpGrouping(node.parent, unionData2);
+    if (!node.parent)
+      return true;
+    tryGrouping(node.parent, node);
+    return true;
   };
-  function getValueMapFromUnionData(inputMap) {
-    const result = {};
-    for (const [key, value] of Object.entries(inputMap)) {
-      if (!result[value]) {
-        result[value] = [];
-      }
-      result[value].push(key);
-    }
-    return result;
-  }
-  var highlightGroupedElements = (unionData2, mapOfElements2) => {
-    const value_map = getValueMapFromUnionData(unionData2);
-    console.log(value_map);
-  };
-  var unionData = /* @__PURE__ */ new Map();
-  var mapOfElements = /* @__PURE__ */ new Map();
-  document.addEventListener(
+  window.addEventListener(
     "click",
-    async (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const crawledData = await generatedCrawledData(event, unionData, mapOfElements);
-      console.log(crawledData);
-      console.log("union crawl", unionData);
-      const done = await bottomUpGrouping(crawledData.children[0], unionData);
+    async () => {
+      console.log("Analyzing DOM...");
+      const crawledData = await generateCrawledData();
+      console.log("Total Nodes:", totalNoOfNodes);
+      console.log("Starting Grouping...");
+      const done = await bottomUpGrouping(crawledData.children[0]);
       if (done) {
-        console.log("union data", unionData, mapOfElements);
-        highlightGroupedElements(unionData, mapOfElements);
+        groupingResults.forEach((result) => {
+          highlightGroupedElements(result.grouping, result.highlight);
+        });
+        logGroupingResults(groupingResults, totalNoOfNodes);
+        return;
       }
     },
     true
