@@ -125,6 +125,10 @@ window.addEventListener(
 			aiGrouping,
 			totalNoOfNodes
 		);
+		highlightGroupedElements(ancestorGrouping);
+		highlightGroupedElements(clientBoundingRectGrouping);
+		highlightGroupedElements(innerTextGrouping);
+		highlightGroupedElements(aiGrouping, true);
 	},
 	true
 );

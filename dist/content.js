@@ -7498,6 +7498,21 @@
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
   };
+  var highlight = (parent, child, isAiMode = false) => {
+    const childElement = document.querySelector(
+      `[data-uuid="${child}"]`
+    );
+    const parentElement = document.querySelector(
+      `[data-uuid="${parent}"]`
+    );
+    if (!childElement || !parentElement)
+      return;
+    parentElement.style.border = `2px solid ${isAiMode ? "red" : "purple"}`;
+    childElement.style.border = `1px solid ${isAiMode ? "orange" : "blue"}`;
+  };
+  var highlightGroupedElements = (unionData, isAiMode = false) => {
+    unionData.forEach((parent, child) => highlight(parent, child, isAiMode));
+  };
   var pathToParent = (element, path = []) => {
     if (!element || !element.tagName)
       return path.reverse();
@@ -7708,6 +7723,10 @@
         aiGrouping,
         totalNoOfNodes
       );
+      highlightGroupedElements(ancestorGrouping);
+      highlightGroupedElements(clientBoundingRectGrouping);
+      highlightGroupedElements(innerTextGrouping);
+      highlightGroupedElements(aiGrouping, true);
     },
     true
   );
