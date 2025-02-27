@@ -7498,21 +7498,6 @@
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
   };
-  var highlight = (parent, child, isAiMode = false) => {
-    const childElement = document.querySelector(
-      `[data-uuid="${child}"]`
-    );
-    const parentElement = document.querySelector(
-      `[data-uuid="${parent}"]`
-    );
-    if (!childElement || !parentElement)
-      return;
-    parentElement.style.border = `2px solid ${isAiMode ? "red" : "purple"}`;
-    childElement.style.border = `1px solid ${isAiMode ? "orange" : "blue"}`;
-  };
-  var highlightGroupedElements = (unionData, isAiMode = false) => {
-    unionData.forEach((parent, child) => highlight(parent, child, isAiMode));
-  };
   var pathToParent = (element, path = []) => {
     if (!element || !element.tagName)
       return path.reverse();
@@ -7526,26 +7511,119 @@
     );
   };
   var compareInnerText = (parent, child) => parent.innerText === child.innerText;
-  var isAncestorClickable = (path) => path.some((element) => CLICKABLE_ELEMENTS.has(element.toUpperCase()));
-  var screenshot = async (element, parent, child) => {
+  var isAncestorClickable = (path) => path.some(
+    (element) => CLICKABLE_ELEMENTS.has(element.replace(/\[.*\]/g, "").toUpperCase())
+  );
+  var screenshot = async (parent, child) => {
     const parentOldBorder = parent.elementRef.style.border;
     const childOldBorder = child.elementRef.style.border;
     parent.elementRef.style.border = "2px solid red";
     child.elementRef.style.border = "2px solid red";
-    const screenshot2 = await (0, import_html2canvas.default)(element);
+    const screenshot2 = await (0, import_html2canvas.default)(parent.elementRef);
     parent.elementRef.style.border = parentOldBorder;
     child.elementRef.style.border = childOldBorder;
     const screenshotDataUrl = screenshot2.toDataURL("image/base64");
     parent.image = screenshotDataUrl;
     return screenshotDataUrl;
   };
+  var calculatePercentage = (count, total) => (count / total * 100).toFixed(2);
+  var logGroupingResults = (ancestorChildToParentMap, clientBoundingRectChildToParentMap, innerTextChildToParentMap, aiChildToParentMap, totalNoOfNodes2) => {
+    const ancestorGroupedCount = ancestorChildToParentMap.size;
+    const clientBoundingRectGroupedCount = clientBoundingRectChildToParentMap.size;
+    const innerTextGroupedCount = innerTextChildToParentMap.size;
+    const aiGroupedCount = aiChildToParentMap.size;
+    console.log(
+      `Grouping Results: ${calculatePercentage(
+        ancestorGroupedCount,
+        totalNoOfNodes2
+      )}% grouped using Ancestor strategy`
+    );
+    console.log(
+      `Grouping Results: ${calculatePercentage(
+        clientBoundingRectGroupedCount,
+        totalNoOfNodes2
+      )}% grouped using ClientBoundingRect strategy`
+    );
+    console.log(
+      `Grouping Results: ${calculatePercentage(
+        innerTextGroupedCount,
+        totalNoOfNodes2
+      )}% grouped using InnerText strategy`
+    );
+    console.log(
+      `Grouping Results: ${calculatePercentage(
+        aiGroupedCount,
+        totalNoOfNodes2
+      )}% grouped using AI strategy`
+    );
+  };
+  var setGroupedAttribute = (element) => {
+    element.setAttribute("data-grouped", "true");
+  };
+  var isGrouped = (element) => {
+    return element.getAttribute("data-grouped") === "true";
+  };
+  var bottomUpGrouping = async (node, mode, childToParentMap) => {
+    console.log("NODE", { node, mode, childToParentMap });
+    if (!node)
+      return;
+    for (const child of node.children) {
+      await bottomUpGrouping(child, mode, childToParentMap);
+    }
+    if (!node.parent)
+      return;
+    if (isGrouped(node.elementRef)) {
+      console.log("Already-grouped so skipped");
+      return;
+    }
+    switch (mode) {
+      case "Ancestor" /* ANCESTOR */: {
+        console.log("Ancestor - check", node);
+        if (isAncestorClickable(node.path)) {
+          console.log("Ancestor - yes");
+          childToParentMap.set(node.uuid, node.parent.uuid);
+          setGroupedAttribute(node.elementRef);
+        }
+        console.log("Ancestor - no");
+        break;
+      }
+      case "ClientBoundingRect" /* CLIENT_BOUNDING_RECT */: {
+        if (compareBoundingClientRects(
+          node.parent.getBoundingClientRect,
+          node.getBoundingClientRect
+        )) {
+          childToParentMap.set(node.uuid, node.parent.uuid);
+          setGroupedAttribute(node.elementRef);
+        }
+        break;
+      }
+      case "InnerText" /* INNER_TEXT */: {
+        if (compareInnerText(node.parent.elementRef, node.elementRef)) {
+          childToParentMap.set(node.uuid, node.parent.uuid);
+          setGroupedAttribute(node.elementRef);
+        }
+        break;
+      }
+      case "AI" /* AI */: {
+        const response = await fetch("http://127.0.0.1:5000/group", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            img: await screenshot(node.parent, node)
+          })
+        }).then((res) => res.json());
+        if (`${response?.received_data}`.toLowerCase() === "true") {
+          childToParentMap.set(node.uuid, node.parent.uuid);
+          console.log("AI Grouping", node.elementRef, node.parent.elementRef);
+          setGroupedAttribute(node.elementRef);
+        }
+        break;
+      }
+    }
+  };
 
   // content.ts
   console.log("Content script injected!");
-  var ancestorGrouping = /* @__PURE__ */ new Map();
-  var clientBoundingRectGrouping = /* @__PURE__ */ new Map();
-  var innerTextGrouping = /* @__PURE__ */ new Map();
-  var aiGrouping = /* @__PURE__ */ new Map();
   var crawlElement = async (element = document.body, path = [], parent = null, siblingOrder = 0) => {
     totalNoOfNodes += 1;
     const { tagName: tag } = element;
@@ -7596,75 +7674,6 @@
     );
     return crawledData;
   };
-  var tryGrouping = async (parent, child) => {
-    if (!parent || !child)
-      return;
-    if (isAncestorClickable(child.path)) {
-      ancestorGrouping.set(child.uuid, parent.uuid);
-      return;
-    }
-    if (compareBoundingClientRects(
-      parent.getBoundingClientRect,
-      child.getBoundingClientRect
-    )) {
-      clientBoundingRectGrouping.set(child.uuid, parent.uuid);
-      return;
-    }
-    if (compareInnerText(parent.elementRef, child.elementRef)) {
-      innerTextGrouping.set(child.uuid, parent.uuid);
-      return;
-    }
-    const response = await fetch("http://127.0.0.1:5000/group", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        img: await screenshot(parent.elementRef, parent, child)
-      })
-    }).then((res) => res.json());
-    if (`${response?.received_data}`.toLowerCase() === "true") {
-      aiGrouping.set(child.uuid, parent.uuid);
-      console.log("AI Grouping", child.elementRef, parent.elementRef);
-      return;
-    }
-    return;
-  };
-  var groupingResults = [
-    { name: "Ancestor", grouping: ancestorGrouping, highlight: false },
-    {
-      name: "ClientBoundingRect",
-      grouping: clientBoundingRectGrouping,
-      highlight: false
-    },
-    { name: "InnerText", grouping: innerTextGrouping, highlight: false },
-    { name: "AI", grouping: aiGrouping, highlight: false }
-  ];
-  var calculatePercentage = (count, total) => (count / total * 100).toFixed(2);
-  var logGroupingResults = (results, totalNodes) => {
-    const totalGrouped = results.reduce(
-      (sum, result) => sum + result.grouping.size,
-      0
-    );
-    const unableToGroup = totalNodes - totalGrouped;
-    results.forEach((result) => {
-      console.log(
-        `Grouped by ${result.name}: ${calculatePercentage(result.grouping.size, totalNodes)}%`
-      );
-    });
-    console.log(
-      `Unable to group: ${calculatePercentage(unableToGroup, totalNodes)}%`
-    );
-  };
-  var bottomUpGrouping = async (node) => {
-    if (!node)
-      return true;
-    for (const child of node.children) {
-      await bottomUpGrouping(child);
-    }
-    if (!node.parent)
-      return true;
-    tryGrouping(node.parent, node);
-    return true;
-  };
   window.addEventListener(
     "click",
     async () => {
@@ -7672,14 +7681,33 @@
       const crawledData = await generateCrawledData();
       console.log("Total Nodes:", totalNoOfNodes);
       console.log("Starting Grouping...");
-      const done = await bottomUpGrouping(crawledData.children[0]);
-      if (done) {
-        groupingResults.forEach((result) => {
-          highlightGroupedElements(result.grouping, result.highlight);
-        });
-        logGroupingResults(groupingResults, totalNoOfNodes);
-        return;
-      }
+      const ancestorGrouping = /* @__PURE__ */ new Map();
+      const clientBoundingRectGrouping = /* @__PURE__ */ new Map();
+      const innerTextGrouping = /* @__PURE__ */ new Map();
+      const aiGrouping = /* @__PURE__ */ new Map();
+      bottomUpGrouping(
+        crawledData.children[0],
+        "Ancestor" /* ANCESTOR */,
+        ancestorGrouping
+      );
+      bottomUpGrouping(
+        crawledData.children[0],
+        "ClientBoundingRect" /* CLIENT_BOUNDING_RECT */,
+        clientBoundingRectGrouping
+      );
+      bottomUpGrouping(
+        crawledData.children[0],
+        "InnerText" /* INNER_TEXT */,
+        innerTextGrouping
+      );
+      await bottomUpGrouping(crawledData.children[0], "AI" /* AI */, aiGrouping);
+      logGroupingResults(
+        ancestorGrouping,
+        clientBoundingRectGrouping,
+        innerTextGrouping,
+        aiGrouping,
+        totalNoOfNodes
+      );
     },
     true
   );
