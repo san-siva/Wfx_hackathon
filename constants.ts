@@ -233,18 +233,22 @@ export const bottomUpGrouping = async (
 			break;
 		}
 		case Mode.AI: {
-			const response = await fetch('http://127.0.0.1:5000/group', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					img: await screenshot(node.parent, node),
-				}),
-			}).then(res => res.json());
+			try {
+				const response = await fetch('http://127.0.0.1:5000/group', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						img: await screenshot(node.parent, node),
+					}),
+				}).then(res => res.json());
 
-			if (`${response?.received_data}`.toLowerCase() === 'true') {
-				childToParentMap.set(node.uuid, node.parent.uuid);
-				console.log('AI Grouping', node.elementRef, node.parent!.elementRef);
-				setGroupedAttribute(node.elementRef);
+				if (`${response?.received_data}`.toLowerCase() === 'true') {
+					childToParentMap.set(node.uuid, node.parent.uuid);
+					console.log('AI Grouping', node.elementRef, node.parent!.elementRef);
+					setGroupedAttribute(node.elementRef);
+				}
+			} catch (e) {
+				console.error('Error in AI grouping', e);
 			}
 			break;
 		}
