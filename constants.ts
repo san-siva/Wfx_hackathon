@@ -183,6 +183,14 @@ const isGrouped = (element: HTMLElement) => {
 	return element.getAttribute('data-grouped') === 'true';
 };
 
+const addToCache = (uuid: string, value: boolean) => {
+	localStorage.setItem(uuid, `${value}`);
+};
+
+const getFromCache = (uuid: string) => {
+	return localStorage.getItem(uuid);
+};
+
 export const bottomUpGrouping = async (
 	node: Children | null,
 	mode: Mode,
@@ -234,6 +242,18 @@ export const bottomUpGrouping = async (
 		}
 		case Mode.AI: {
 			try {
+				console.log('AI Grouping', node.elementRef, node.parent!.elementRef);
+				const cachedValue = getFromCache(node.uuid);
+				if (cachedValue) {
+					if (cachedValue === 'true') {
+						console.log('AI Grouping - cached true');
+						childToParentMap.set(node.uuid, node.parent.uuid);
+						setGroupedAttribute(node.elementRef);
+					}
+					console.log('AI Grouping - cached false');
+					break;
+				}
+				console.log('AI Grouping - API call');
 				const response = await fetch('http://127.0.0.1:5000/group', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -241,12 +261,15 @@ export const bottomUpGrouping = async (
 						img: await screenshot(node.parent, node),
 					}),
 				}).then(res => res.json());
-
+				if (!response?.received_data) throw new Error('No response from AI');
 				if (`${response?.received_data}`.toLowerCase() === 'true') {
+					addToCache(node.uuid, true);
 					childToParentMap.set(node.uuid, node.parent.uuid);
-					console.log('AI Grouping', node.elementRef, node.parent!.elementRef);
 					setGroupedAttribute(node.elementRef);
+					break;
 				}
+				addToCache(node.uuid, false);
+				break;
 			} catch (e) {
 				console.error('Error in AI grouping', e);
 			}

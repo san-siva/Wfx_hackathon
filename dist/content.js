@@ -7578,6 +7578,12 @@
   var isGrouped = (element) => {
     return element.getAttribute("data-grouped") === "true";
   };
+  var addToCache = (uuid, value) => {
+    localStorage.setItem(uuid, `${value}`);
+  };
+  var getFromCache = (uuid) => {
+    return localStorage.getItem(uuid);
+  };
   var bottomUpGrouping = async (node, mode, childToParentMap) => {
     console.log("NODE", { node, mode, childToParentMap });
     if (!node)
@@ -7620,17 +7626,38 @@
         break;
       }
       case "AI" /* AI */: {
-        const response = await fetch("http://127.0.0.1:5000/group", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            img: await screenshot(node.parent, node)
-          })
-        }).then((res) => res.json());
-        if (`${response?.received_data}`.toLowerCase() === "true") {
-          childToParentMap.set(node.uuid, node.parent.uuid);
+        try {
           console.log("AI Grouping", node.elementRef, node.parent.elementRef);
-          setGroupedAttribute(node.elementRef);
+          const cachedValue = getFromCache(node.uuid);
+          if (cachedValue) {
+            if (cachedValue === "true") {
+              console.log("AI Grouping - cached true");
+              childToParentMap.set(node.uuid, node.parent.uuid);
+              setGroupedAttribute(node.elementRef);
+            }
+            console.log("AI Grouping - cached false");
+            break;
+          }
+          console.log("AI Grouping - API call");
+          const response = await fetch("http://127.0.0.1:5000/group", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              img: await screenshot(node.parent, node)
+            })
+          }).then((res) => res.json());
+          if (!response?.received_data)
+            throw new Error("No response from AI");
+          if (`${response?.received_data}`.toLowerCase() === "true") {
+            addToCache(node.uuid, true);
+            childToParentMap.set(node.uuid, node.parent.uuid);
+            setGroupedAttribute(node.elementRef);
+            break;
+          }
+          addToCache(node.uuid, false);
+          break;
+        } catch (e) {
+          console.error("Error in AI grouping", e);
         }
         break;
       }
